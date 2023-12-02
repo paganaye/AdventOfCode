@@ -1,8 +1,8 @@
 import `2023`.day1.darren.DataSource
 import `2023`.day1.darren.TrebuchetSolution
 
-fun main(args: Array<String>) {
 
+fun day1_Darren() {
     val inputString = DataSource.getAsString()
 
     val trebuchetSolution = TrebuchetSolution(inputString)
@@ -12,4 +12,11 @@ fun main(args: Array<String>) {
 
     val starTwoSolution = trebuchetSolution.calculateSecondCalibrationValues()
     println(starTwoSolution)
+}
+
+fun main() {
+    println("** Day 1 - Darren")
+    day1_Darren()
+    println("** Day 1 - Pascal")
+    day1_Pascal()
 }
