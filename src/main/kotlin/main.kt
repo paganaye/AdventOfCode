@@ -19,4 +19,12 @@ fun main() {
     day1_Darren()
     println("** Day 1 - Pascal")
     day1_Pascal()
+
+    println()
+
+    println("** Day 2 - Darren")
+    println() // day2_Darren()
+
+    println("** Day 2 - Pascal")
+    day2_Pascal()
 }
