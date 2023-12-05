@@ -17,16 +17,16 @@ fun day1_Darren() {
 }
 
 fun main() {
-    println("** Day 1 - Darren")
-    day1_Darren()
-    println("** Day 1 - Pascal")
-    day1_Pascal()
-
+//    println("** Day 1 - Darren")
+//    day1_Darren()
+//    println("** Day 1 - Pascal")
+//    day1_Pascal()
 //    println()
 //    println("** Day 3 - Pascal")
 //    day3_Pascal()
 
-    println("** Day 4 - Pascal")
-    day4_Pascal()
+//    println("** Day 4 - Pascal")
+//    day4_Pascal()
 
+    day5_Pascal()
 }
