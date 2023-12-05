@@ -33,14 +33,8 @@ humidity-to-location map:
 56 93 4"""
 
 enum class Kind(val order: Int) {
-    seed(0),
-    soil(1),
-    fertilizer(2),
-    water(3),
-    light(4),
-    temperature(5),
-    humidity(6),
-    location(7)
+    seed(0), soil(1), fertilizer(2), water(3), light(4), temperature(5),
+    humidity(6), location(7)
 }
 
 val day5PascalMainData =
@@ -274,65 +268,175 @@ humidity-to-location map:
 
 fun day5_Pascal() {
 
-    data class Row(val destStart: Long, val sourceStart: Long, val length: Long)
-    data class Map(val from: Kind, val to: Kind) {
-        var rows = mutableListOf<Row>()
+    data class TransformRow(val destStart: Long, val sourceStart: Long, val length: Long) {
+        //val sourceEnd get(): Long = sourceStart + length - 1
+        val sourceEnd = sourceStart + length - 1
     }
 
-    data class Maps(val seeds: List<Long>, val maps: List<Map>)
+    data class GardenMap(val from: Kind, val to: Kind) {
+        var transformRows = mutableListOf<TransformRow>()
+    }
 
-    fun parseRow(line: String): Row {
+    data class Range(val from: Long, val length: Long) {
+        val to = from + length - 1
+    }
+
+    data class Almanac(val seeds: List<Range>, val maps: Map<Kind, GardenMap>) {
+        init {
+            maps.values.forEach { it.transformRows.sortBy { it.sourceStart } }
+        }
+    }
+
+    fun parseRow(line: String): TransformRow {
         val parts = line.split(" ").map { it.toLong() }
-        return Row(parts[0], parts[1], parts[2])
+        return TransformRow(parts[0], parts[1], parts[2])
     }
 
-    fun parseMaps(input: String): Maps {
-        val lines = input.lines()
-        var seeds: List<Long>? = null
-        var currentMap: Map? = null
-        val maps = mutableListOf<Map>()
+
+    fun parseMaps(input: String, part: Int): Almanac {
+        var seeds: List<Range>? = null
+        var currentGardenMap: GardenMap? = null
+        val gardenMaps = mutableMapOf<Kind, GardenMap>()
         input.lines().forEachIndexed() { i, line ->
             if (i == 0) {
-                val parts = line.split(": ")
-                seeds = parts[1].split(" ").map { it.toLong() }
+                val numbers = line.split(": ")[1].split(" ").map { it.toLong() }
+                if (part == 1) {
+                    seeds = numbers.map { Range(it, 1L) }
+                } else {
+                    seeds = numbers.chunked(2).map { Range(it.get(0), it.get(1)) }
+                }
             } else if (line.contains(":")) {
                 val name = line.split(" ")[0].split("-to-")
                 val from = Kind.valueOf(name[0])
                 val to = Kind.valueOf(name[1])
-                currentMap = Map(from, to)
-                maps.add(currentMap!!)
+                currentGardenMap = GardenMap(from, to)
+                gardenMaps.set(from, currentGardenMap!!)
             } else if (line.length > 0) {
-                currentMap!!.rows.add(parseRow(line))
+                currentGardenMap!!.transformRows.add(parseRow(line))
             }
         }
-        return Maps(seeds!!, maps)
+        return Almanac(seeds!!, gardenMaps)
 
     }
 
+    fun findNextPosition(position: Long, rows: List<TransformRow>): Long {
+        var min = 0
+        var max = rows.size
+        while (max >= min) {
+            var mid = (min + max) / 2
+            if (mid < 0 || mid >= rows.size) break
+            var midVal = rows[mid]
+            if (position < midVal.sourceStart) {
+                max = mid - 1
+            } else if (position <= midVal.sourceEnd) {
+                return (position - midVal.sourceStart) + midVal.destStart
+            } else {
+                min = mid + 1
+            }
+        }
+        return position
+    }
 
-    fun calculatePoints(maps: Maps): Long {
-        var result = 0L
+    fun calculatePoints1(almanac: Almanac): Long {
         val locations = mutableListOf<Long>()
-        maps.seeds.forEach() {
-            println(it)
+        almanac.seeds.forEach {
+            val seed = it.from
+            var position = seed
+            for (k in Kind.entries) {
+                //seed 79 > soil 81 > fertilizer 81 > water 81 > light 74 > temperature 78 > humidity 78 > location 82
+                //seed 14 > soil 14 > fertilizer 14 <= 53
+                print(k.name + " " + position)
+                if (k == Kind.location) {
+                    println()
+                    break
+                } else print(" > ")
+                val map = almanac.maps.get(k)!!
+                position = findNextPosition(position, map.transformRows)
+            }
+            locations.add(position)
+        }
+        return locations.min()
+    }
+
+    fun findNextRanges(sourceRanges: List<Range>, rows: List<TransformRow>): List<Range> {
+        val result = mutableListOf<Range>()
+
+        fun findNextPositions(currentRange: Range) {
+            var position = currentRange.from;
+            var length = currentRange.length;
+
+            fun addRange(from: Long, rangeLength: Long) {
+                result.add(Range(from, rangeLength))
+                length -= rangeLength
+                position += rangeLength
+            }
+            while (length > 0) {
+                var min = 0
+                var max = rows.size
+                while (max >= min) {
+                    var mid = (min + max) / 2
+                    var midVal = rows[mid]
+                    if (position < midVal.sourceStart) {
+                        max = mid - 1
+                        if (max < 0) {
+                            val newRangeLength = Math.min(length, midVal.sourceStart - position)
+                            addRange(position, newRangeLength)
+                            break
+                        };
+                    } else if (position <= midVal.sourceEnd) {
+                        val newRangePosition = (position - midVal.sourceStart) + midVal.destStart
+                        val newRangeLength = Math.min(length, midVal.length)
+                        addRange(newRangePosition, newRangeLength)
+                        break
+                    } else {
+                        min = mid + 1
+                        if (min >= rows.size) {
+                            addRange(position, length)
+                            break
+                        }
+                    }
+                }
+                // not found we should continue on min or max
+                if (length > 0) {
+                    println("TODO min" + min + " max" + max + " Diff " + (max - min))
+                    if (min == max) {
+                    }
+                }
+            }
+        }
+        for (sourceRange in sourceRanges) {
+            findNextPositions(sourceRange)
         }
         return result
     }
 
-    fun calculatePoints2(maps: Maps): Long {
-        var result = 0L
 
-        return result
+    fun calculatePoints2(almanac: Almanac): Long {
+        val locations = mutableListOf<Long>()
+        almanac.seeds.forEach {
+            var ranges = listOf(it)
+            for (k in Kind.entries) {
+                println(k.name + " " + ranges)
+                if (k == Kind.location) {
+                    break
+                }
+                val map = almanac.maps.get(k)!!
+                ranges = findNextRanges(ranges, map.transformRows)
+            }
+            val minPosition = ranges.minBy { it.from }.from
+            locations.add(minPosition)
+        }
+        return locations.min()
     }
 
     fun day5Part1(input: String): Long {
-        val parsedMaps = parseMaps(input)
-        val result = calculatePoints(parsedMaps)
+        val parsedMaps = parseMaps(input, 1)
+        val result = calculatePoints1(parsedMaps)
         return result
     }
 
     fun day5Part2(input: String): Long {
-        val parsedMaps = parseMaps(input)
+        val parsedMaps = parseMaps(input, 2)
         val result = calculatePoints2(parsedMaps)
         return result
     }
