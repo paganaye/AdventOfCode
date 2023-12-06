@@ -32,11 +32,6 @@ humidity-to-location map:
 60 56 37
 56 93 4"""
 
-enum class Kind(val order: Int) {
-    seed(0), soil(1), fertilizer(2), water(3), light(4), temperature(5),
-    humidity(6), location(7)
-}
-
 val day5PascalMainData =
     """seeds: 2149186375 163827995 1217693442 67424215 365381741 74637275 1627905362 77016740 22956580 60539394 586585112 391263016 2740196667 355728559 2326609724 132259842 2479354214 184627854 3683286274 337630529
 
@@ -265,45 +260,79 @@ humidity-to-location map:
 511735481 1481246364 58101507
 2624588397 1382165537 99080827"""
 
+enum class Kind(val order: Int) {
+    seed(0), soil(1), fertilizer(2), water(3), light(4), temperature(5),
+    humidity(6), location(7)
+}
+
+data class Range constructor(val first: Long, val last: Long, val length: Long) {
+    fun offset(delta: Long): Range {
+        return fromStartAndLength(first + delta, length)
+    }
+
+    init {
+        assert(last >= first && last == first + length - 1)
+    }
+
+    companion object {
+        fun fromStartAndLength(start: Long, length: Long): Range {
+            val to = start + length - 1
+            return Range(start, to, length)
+        }
+
+        fun fromStartAndEnd(start: Long, end: Long): Range {
+            val length = end - start + 1
+            return Range(start, end, length)
+        }
+    }
+}
+
+data class TransformRow(val source: Range, val dest: Range) {
+    val delta = dest.first - source.first
+
+    init {
+        assert(source.length == dest.length)
+    }
+}
+
+data class GardenMap(val from: Kind, val to: Kind) {
+    var transformRows = mutableListOf<TransformRow>()
+}
+
+data class Almanac(val seeds: List<Range>, val maps: Map<Kind, GardenMap>) {
+    init {
+        maps.values.forEach { it.transformRows.sortBy { it.source.first } }
+    }
+}
 
 fun day5_Pascal() {
 
-    data class TransformRow(val destStart: Long, val sourceStart: Long, val length: Long) {
-        //val sourceEnd get(): Long = sourceStart + length - 1
-        val sourceEnd = sourceStart + length - 1
-    }
-
-    data class GardenMap(val from: Kind, val to: Kind) {
-        var transformRows = mutableListOf<TransformRow>()
-    }
-
-    data class Range(val from: Long, val length: Long) {
-        val to = from + length - 1
-    }
-
-    data class Almanac(val seeds: List<Range>, val maps: Map<Kind, GardenMap>) {
-        init {
-            maps.values.forEach { it.transformRows.sortBy { it.sourceStart } }
-        }
-    }
-
     fun parseRow(line: String): TransformRow {
         val parts = line.split(" ").map { it.toLong() }
-        return TransformRow(parts[0], parts[1], parts[2])
+        val destinationRangeStart = parts[0]
+        val sourceRangeStart = parts[1]
+        val rangeLength = parts[2]
+        val sourceRange = Range.fromStartAndLength(sourceRangeStart, rangeLength)
+        val destinationRange = Range.fromStartAndLength(destinationRangeStart, rangeLength)
+        return TransformRow(sourceRange, destinationRange)
     }
 
 
-    fun parseMaps(input: String, part: Int): Almanac {
+    fun parseAlmanac(input: String, part: Int): Almanac {
         var seeds: List<Range>? = null
         var currentGardenMap: GardenMap? = null
         val gardenMaps = mutableMapOf<Kind, GardenMap>()
         input.lines().forEachIndexed() { i, line ->
             if (i == 0) {
                 val numbers = line.split(": ")[1].split(" ").map { it.toLong() }
-                if (part == 1) {
-                    seeds = numbers.map { Range(it, 1L) }
+                seeds = if (part == 1) {
+                    numbers.map { Range.fromStartAndEnd(it, it) }
                 } else {
-                    seeds = numbers.chunked(2).map { Range(it.get(0), it.get(1)) }
+                    numbers.chunked(2).map {
+                        val from = it.get(0)
+                        val length = it.get(1)
+                        Range.fromStartAndLength(from, length)
+                    }
                 }
             } else if (line.contains(":")) {
                 val name = line.split(" ")[0].split("-to-")
@@ -326,10 +355,11 @@ fun day5_Pascal() {
             var mid = (min + max) / 2
             if (mid < 0 || mid >= rows.size) break
             var midVal = rows[mid]
-            if (position < midVal.sourceStart) {
+            if (position < midVal.source.first) {
                 max = mid - 1
-            } else if (position <= midVal.sourceEnd) {
-                return (position - midVal.sourceStart) + midVal.destStart
+            } else if (position <= midVal.source.last) {
+                // we
+                return position + midVal.delta
             } else {
                 min = mid + 1
             }
@@ -340,7 +370,7 @@ fun day5_Pascal() {
     fun calculatePoints1(almanac: Almanac): Long {
         val locations = mutableListOf<Long>()
         almanac.seeds.forEach {
-            val seed = it.from
+            val seed = it.first
             var position = seed
             for (k in Kind.entries) {
                 //seed 79 > soil 81 > fertilizer 81 > water 81 > light 74 > temperature 78 > humidity 78 > location 82
@@ -362,45 +392,47 @@ fun day5_Pascal() {
         val result = mutableListOf<Range>()
 
         fun findNextPositions(currentRange: Range) {
-            var position = currentRange.from;
-            var length = currentRange.length;
+            var first = currentRange.first;
+            val last = currentRange.last
 
-            fun addRange(from: Long, rangeLength: Long) {
-                result.add(Range(from, rangeLength))
-                length -= rangeLength
-                position += rangeLength
+            fun addDestRange(sourceRange: Range, delta: Long) {
+                result.add(sourceRange.offset(delta))
+                first = sourceRange.last + 1
             }
-            while (length > 0) {
-                var min = 0
-                var max = rows.size
-                while (max >= min) {
-                    var mid = (min + max) / 2
-                    var midVal = rows[mid]
-                    if (position < midVal.sourceStart) {
-                        max = mid - 1
-                        if (max < 0) {
-                            val newRangeLength = Math.min(length, midVal.sourceStart - position)
-                            addRange(position, newRangeLength)
+
+            while (first <= last) {
+                var minRowNo = 0
+                var maxRowNo = rows.size
+                val resultSizeBefore = result.size
+                while (maxRowNo >= minRowNo) {
+                    val searchRowNo = (minRowNo + maxRowNo) / 2
+                    val searchRowVal = rows[searchRowNo]
+                    if (first < searchRowVal.source.first) {
+                        maxRowNo = searchRowNo - 1
+                        if (maxRowNo < 0) {
+                            // we're before the first range
+                            val end = Math.min(last, searchRowVal.source.first - 1)
+                            addDestRange(Range.fromStartAndEnd(first, end), 0)
                             break
                         };
-                    } else if (position <= midVal.sourceEnd) {
-                        val newRangePosition = (position - midVal.sourceStart) + midVal.destStart
-                        val newRangeLength = Math.min(length, midVal.length)
-                        addRange(newRangePosition, newRangeLength)
+                    } else if (first <= searchRowVal.source.last) {
+                        // we're in the middle of a range
+                        val end = Math.min(last, searchRowVal.source.last)
+                        addDestRange(Range.fromStartAndEnd(first, end), searchRowVal.delta)
                         break
                     } else {
-                        min = mid + 1
-                        if (min >= rows.size) {
-                            addRange(position, length)
+                        minRowNo = searchRowNo + 1
+                        if (minRowNo >= rows.size) {
+                            // we're after the last range
+                            val end = last
+                            addDestRange(Range.fromStartAndEnd(first, end), 0)
                             break
                         }
                     }
                 }
-                // not found we should continue on min or max
-                if (length > 0) {
-                    println("TODO min" + min + " max" + max + " Diff " + (max - min))
-                    if (min == max) {
-                    }
+                if (result.size == resultSizeBefore) {
+                    // we haven't moved at all the range was not intersecting
+                    addDestRange(currentRange, 0)
                 }
             }
         }
@@ -415,29 +447,30 @@ fun day5_Pascal() {
         val locations = mutableListOf<Long>()
         almanac.seeds.forEach {
             var ranges = listOf(it)
+            val countBefore = ranges.sumOf { it.length }
             for (k in Kind.entries) {
                 println(k.name + " " + ranges)
-                if (k == Kind.location) {
-                    break
-                }
+                if (k == Kind.location) break
                 val map = almanac.maps.get(k)!!
                 ranges = findNextRanges(ranges, map.transformRows)
+                val countAfter = ranges.sumOf { it.length }
+                assert(countAfter == countBefore)
             }
-            val minPosition = ranges.minBy { it.from }.from
+            val minPosition = ranges.minBy { it.first }.first
             locations.add(minPosition)
         }
         return locations.min()
     }
 
     fun day5Part1(input: String): Long {
-        val parsedMaps = parseMaps(input, 1)
-        val result = calculatePoints1(parsedMaps)
+        val almanac = parseAlmanac(input, 1)
+        val result = calculatePoints1(almanac)
         return result
     }
 
     fun day5Part2(input: String): Long {
-        val parsedMaps = parseMaps(input, 2)
-        val result = calculatePoints2(parsedMaps)
+        val almanac = parseAlmanac(input, 2)
+        val result = calculatePoints2(almanac)
         return result
     }
     println("  * Part 1")
