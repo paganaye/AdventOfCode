@@ -28,5 +28,5 @@ fun main() {
 //    println("** Day 4 - Pascal")
 //    day4_Pascal()
 
-    day6_Pascal()
+    day7_Pascal()
 }
