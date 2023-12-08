@@ -1004,69 +1004,133 @@ J3A33 470
 43666 949
 66A6A 960"""
 
-val order = "23456789TJQKA"
-val orderMap = order.withIndex().associate { it.value to it.index }
+enum class Rank(val value: Int) {
+    HIGH_CARD(1),
+    ONE_PAIR(2),
+    TWO_PAIRS(3),
+    THREE_OF_A_KIND(4),
+    FULL_HOUSE(5),
+    FOUR_OF_A_KIND(6),
+    FIVE_OF_A_KIND(7)
+}
 
-data class CardCount(val card: Char, val count: Int)
+enum class Card(val char: Char, val part1Strength: Int, val part2Strength: Int) {
+    TWO('2', 2, 2),
+    THREE('3', 3, 3),
+    FOUR('4', 4, 4),
+    FIVE('5', 5, 5),
+    SIX('6', 6, 6),
+    SEVEN('7', 7, 7),
+    EIGHT('8', 8, 8),
+    NINE('9', 9, 9),
+    TEN('T', 10, 10),
+    JACK('J', 11, 1),  // Updated strength for part 2
+    QUEEN('Q', 12, 12),
+    KING('K', 13, 13),
+    ACE('A', 14, 14);
 
-data class CamelHand(val cards: String, val bid: Int) {
-    val sortedCards = cards.toList().sortedWith(compareByDescending { orderMap[it] }).joinToString("")
-    val counts: List<CardCount> = cards.groupBy { it }.map { CardCount(it.key, it.value.size) }
-        .sortedWith(compareByDescending<CardCount> { it.count }.thenBy { orderMap[it.card] })
-    val name: String
-
-    init {
-        name = when (counts[0].count) {
-            5 -> "Five of a kind " + counts[0].card
-            4 -> "Four of a kind " + counts[0].card
-            3 -> {
-                if (counts[1].count == 2) "Full house " + counts[0].card
-                else "Three of a kind " + counts[0].card
-            }
-
-            2 -> {
-                if (counts[1].count == 2) "Two Pairs " + counts[0].card + " and " + counts[1].card
-                else "Pair " + counts[0].card
-            }
-
-            1 -> "High card"
-            else -> throw Error("Unexpected")
+    companion object {
+        private val byChar = entries.associate { it.char to it }
+        fun fromChar(ch: Char): Card {
+            return byChar[ch]!!
         }
+
+        val JOKER = JACK
     }
 }
 
 fun day7_Pascal() {
-    val spaceOrMore = Regex(" +")
-
-    fun parseInput(input: String): List<CamelHand> {
-        val lines = input.lines()
-        return lines.map({ line ->
-            val parts = line.split(spaceOrMore)
-            CamelHand(parts[0], parts[1].toInt())
-        })
+    fun replaceJokers(cards: List<Card>): List<Card> {
+        if (cards.all { it == Card.JOKER }) return cards
+        if (cards.contains(Card.JOKER)) {
+            val strongestKey = cards.filter { it != Card.JOKER }.groupingBy { it }.eachCount().maxBy { it.value }
+            return cards.map { if (it == Card.JOKER) strongestKey.key else it }
+        } else {
+            return cards
+        }
     }
 
-    fun calculatePoints1(data: List<CamelHand>): Long {
-        val result = data.sumOf { it.bid }
-        return result.toLong()
+    fun getRank(originalCards: List<Card>, isPart2: Boolean = false): Rank {
+        val cards = if (isPart2) replaceJokers(originalCards) else originalCards
+        val occurenceMap = cards.toList().groupingBy { it }.eachCount()
+        return when (occurenceMap.values.max()) {
+            5 -> Rank.FIVE_OF_A_KIND
+            4 -> Rank.FOUR_OF_A_KIND
+            3 -> {
+                if (occurenceMap.containsValue(2)) Rank.FULL_HOUSE
+                else Rank.THREE_OF_A_KIND
+            }
+
+            2 -> {
+                if (occurenceMap.count({ it.value == 2 }) == 2) Rank.TWO_PAIRS
+                else Rank.ONE_PAIR
+            }
+
+            else -> Rank.HIGH_CARD
+        }
     }
+
+    data class Hand(val cards: List<Card>, val score: Int, val part2: Boolean) {
+        val rank = getRank(cards, part2)
+    }
+
+
+    fun parseHands(input: String, part2: Boolean = false): List<Hand> {
+        val hands = mutableListOf<Hand>()
+        input.lines().forEach { line ->
+            val part = line.split(" ")
+            val cards = part[0].toCharArray().map { Card.fromChar(it) }
+            hands.add(
+                Hand(
+                    cards,
+                    score = part[1].toInt(),
+                    part2
+                )
+            )
+        }
+        return hands
+    }
+
+    fun compareCards(s1: List<Card>, s2: List<Card>, part2: Boolean = false): Int {
+        for (i in s1.indices) {
+            val c1 = s1[i]
+            val c2 = s2[i]
+            val delta = if (part2) (c1.part2Strength - c2.part2Strength)
+            else (c1.part1Strength - c2.part1Strength)
+            if (delta != 0) return delta
+        }
+        return 0
+    }
+
+    val cardComparator = Comparator<Hand> { c1, c2 -> compareCards(c1.cards, c2.cards) }
+    val cardComparatorPart2 = Comparator<Hand> { c1, c2 -> compareCards(c1.cards, c2.cards, part2 = true) }
+
 
     fun day7Part1(input: String): Long {
-        val data = parseInput(input)
-        val result = calculatePoints1(data)
+        val hands = parseHands(input)
+        val sortedHands = hands.sortedWith(compareByDescending<Hand> { it.rank }
+            .then(cardComparator.reversed()))
+        var result = 0L
+        sortedHands.forEachIndexed { index, hand -> result += hand.score * (sortedHands.size - index) }
         return result
     }
-//    fun day7Part2(input: String): Long {
-//        val data = parseTimeAndDistance(input)
-//        val result = calculatePoints2(data)
-//        return 0
-//    }
+
+    fun day7Part2(input: String): Long {
+        val hands = parseHands(input, part2 = true)
+        val sortedHands =
+            hands.sortedWith(compareByDescending<Hand> { it.rank }
+                .then(cardComparatorPart2.reversed()))
+        var result = 0L
+        sortedHands.forEachIndexed { index, hand ->
+            result += hand.score * (sortedHands.size - index)
+        }
+        return result
+    }
+
     println("  * Part 1")
     println("    data: ${day7Part1(day7PascalSampleDataPart1)}")
     println("    data: ${day7Part1(day7PascalSampleMainDataPart1)}")
-//    println("  * Part 2")
-//    println("    data: ${day7Part1(day7PascalSampleDataPart2)}")
-//    println("  * Part 3")
-//    println("    data: ${day7Part1(day7PascalSampleDataPart3)}")
+    println("  * Part 2")
+    println("    data: ${day7Part2(day7PascalSampleMainDataPart1)}")
 
 }
